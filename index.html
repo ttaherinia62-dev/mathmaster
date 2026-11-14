@@ -1,0 +1,208 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Math Master | دستیار هوشمند ریاضی</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Tahoma, Vazirmatn, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    width: 100%;
+    max-width: 600px;
+    padding: 30px;
+  }
+  h1 { text-align: center; color: #4a3aff; font-size: 28px; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #777; font-size: 14px; margin-bottom: 25px; }
+  .hidden { display: none; }
+  input, textarea {
+    width: 100%; padding: 12px 15px; border: 2px solid #e0e0e0;
+    border-radius: 10px; font-family: inherit; font-size: 15px;
+    margin-bottom: 12px; transition: border-color 0.2s;
+  }
+  input:focus, textarea:focus { outline: none; border-color: #4a3aff; }
+  textarea { resize: vertical; min-height: 90px; }
+  button {
+    width: 100%; padding: 13px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; border: none; border-radius: 10px;
+    font-family: inherit; font-size: 16px; font-weight: bold;
+    cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+  }
+  button:hover { opacity: 0.92; }
+  button:active { transform: scale(0.98); }
+  .link-btn {
+    background: none; color: #4a3aff; font-size: 13px;
+    font-weight: normal; padding: 8px; margin-top: 6px;
+  }
+  #result {
+    background: #f5f6ff; border-radius: 12px; padding: 18px;
+    margin-top: 18px; line-height: 2; font-size: 15px;
+    color: #333; min-height: 20px; white-space: pre-wrap;
+  }
+  #result:empty { display: none; }
+  .welcome { text-align: center; color: #4a3aff; font-weight: bold; margin-bottom: 15px; }
+  .error { color: #e53935; font-size: 13px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <div id="signupPage">
+    <h1>MATHMASTER</h1>
+    <p class="subtitle">برای شروع، یک نام کاربری انتخاب کن</p>
+    <p id="signupError" class="error"></p>
+    <input id="usernameInput" placeholder="نام کاربری (مثلاً ali)" />
+    <button onclick="signup()">ورود به برنامه</button>
+  </div>
+
+  <div id="mainPage" class="hidden">
+    <h1>MATHMASTER</h1>
+    <p class="subtitle">دستیار هوشمند ریاضی تو</p>
+    <p id="welcomeMsg" class="welcome"></p>
+
+    <textarea id="question" oninput="clearResult()" placeholder="سؤال ریاضی خود را بنویس..."></textarea>
+    <button onclick="solveQuestion()">ارسال</button>
+    <button class="link-btn" onclick="logout()">خروج از حساب</button>
+
+    <div id="result"></div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// 🔑 کلید هرمز خودت رو اینجا بذار (بین دو تا کوتیشن)
+// ============================================================
+const HORMOZ_API_KEY = "ng-05028c0374516ed77206bb7878c0e6be";
+
+// کد مدل رایگان (Xingchen)
+const HORMOZ_MODEL = "xingchen-agi/xing4.0-29b-a4b:free";
+
+// ============================================================
+
+function signup() {
+  const name = document.getElementById("usernameInput").value.trim();
+  const err = document.getElementById("signupError");
+  if (name.length < 3) {
+    err.textContent = "نام کاربری باید حداقل ۳ حرف باشد.";
+    return;
+  }
+  localStorage.setItem("mathmaster_user", name);
+  showMainPage(name);
+}
+
+function logout() {
+  localStorage.removeItem("mathmaster_user");
+  document.getElementById("mainPage").classList.add("hidden");
+  document.getElementById("signupPage").classList.remove("hidden");
+  document.getElementById("usernameInput").value = "";
+  document.getElementById("result").innerHTML = "";
+}
+
+function showMainPage(name) {
+  document.getElementById("signupPage").classList.add("hidden");
+  document.getElementById("mainPage").classList.remove("hidden");
+  document.getElementById("welcomeMsg").textContent = "خوش آمدی " + name + " 👋";
+  loadLastAnswer();
+}
+
+window.onload = function () {
+  const saved = localStorage.getItem("mathmaster_user");
+  if (saved) showMainPage(saved);
+};
+
+function clearResult() {
+  if (document.getElementById("question").value.trim() === "") {
+    document.getElementById("result").innerHTML = "";
+    const user = localStorage.getItem("mathmaster_user");
+    if (user) localStorage.removeItem("mathmaster_last_" + user);
+  }
+}
+
+async function solveQuestion() {
+  const question = document.getElementById("question").value.trim();
+  const result = document.getElementById("result");
+  if (question === "") return;
+
+  // اگه کلید API تنظیم نشده بود، پیام بده
+  if (!HORMOZ_API_KEY || HORMOZ_API_KEY === "کلید-خودت-رو-اینجا-بذار") {
+    result.innerHTML = "⚠️ کلید API هرمز تنظیم نشده. لطفاً کلیدت رو توی کد بذار.";
+    return;
+  }
+
+  result.innerHTML = "در حال فکر کردن... ⏳";
+
+  try {
+    const answer = await askHormoz(question);
+    result.innerHTML = answer;
+    saveLastAnswer();
+  } catch (e) {
+    result.innerHTML = "خطا در ارتباط با هوش مصنوعی: " + e.message;
+  }
+}
+
+async function askHormoz(question) {
+ const targetUrl = "https://api.hormouz.net/v1/chat/completions";
+const url = "https://corsproxy.io/?url=" + encodeURIComponent(targetUrl);
+
+  const body = {
+    model: HORMOZ_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: "تو یک معلم ریاضی هستی. سوالات ریاضی را با راه حل کامل و مرحله به مرحله به فارسی جواب بده. اگر سوال ریاضی نبود، محترمانه بگو که فقط ریاضی جواب می‌دهی."
+      },
+      {
+        role: "user",
+        content: question
+      }
+    ]
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + HORMOZ_API_KEY
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error("HTTP " + response.status + ": " + errText);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error("پاسخی دریافت نشد");
+  return text;
+}
+
+function saveLastAnswer() {
+  const user = localStorage.getItem("mathmaster_user");
+  if (!user) return;
+  localStorage.setItem("mathmaster_last_" + user, document.getElementById("result").innerHTML);
+}
+
+function loadLastAnswer() {
+  const user = localStorage.getItem("mathmaster_user");
+  if (!user) return;
+  const saved = localStorage.getItem("mathmaster_last_" + user);
+  if (saved) document.getElementById("result").innerHTML = saved;
+}
+</script>
+</body>
+</html>
